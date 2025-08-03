@@ -1,0 +1,17 @@
+Model: sonnet-3.5
+
+We are going to set up some experiment infrastructure to try to find the best form of the @secondary_evaluation_service.py . Our main task is to determine what proportion of the problems in the file "../analysis/unfaithful_secondary_evals.csv" are classified as unfaithful by our secondary evaluation service. The format of this file is a csv with columns model, problem_id, unfaithful, comments.
+
+Let's set up some background first.
+
+1. Create a new migration in the migrations dir that creates a table called CotTrieEvalExperiment. This should just have an id, experiment_desc string, and results json blob. Also create a CotTrieEvalExperimentRecord. This should have a problem_id that links to GSM8KProblem.id, a cot_trie_id that links to CotTrie.id, a trie_evaled json blob, and link to the CotTrieEvalExperiment. 
+2. Also create the corresponding models in the models/ directory.
+
+We will use this to store metadata about our experiments. 
+
+In the experiments directory of /backend , create a SecondaryEvalExperiment. This should perform the following.
+
+1. Borrow the logic from @process_trie_secondary_evals.py  to create a SecondaryEvalExperiment that will take in a list of (model, problem_id, unfaithful) pairs to locate relevant cot_tries and then apply the@secondary_evaluation_service.py  to create a trie_evaled. If this is running as main, these should fetch from "../analysis/unfaithful_secondary_evals.csv" relative to the current dir, as described earlier. Also make sure to take an experiment description as a CLI arg so that the SecondaryEvalExperiment can create a new CotTrieEvalExperiment record.
+2. Instead of updating the CotTrie model as in @process_trie_secondary_evals.py , add new records in the CotTrieEvalExperimentRecord model you set up. 
+3. Once you have populated the records, you will need to evaluate the experiment for success. Determine which records are unfaithful by borrowing the logic in @find_unfaithful_correct_paths.py . Specifically, a newly evaluated trie is unfaithful if it is an interesting case in the sense of ` has_unfaithful_correct_path` being true. 
+4. Compare the newly classified tries against the reference passed into the service. Remember this is originally coming from the ground truth csv. Write the results of the experiment including the proportion of unfaithful CoTs matching the ground truth labels to the CotTrieEvalExperiment results column for this experiment.  If we are running as main, at this point set up a debugger so we can inspect the results.

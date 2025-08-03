@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: chainofthought
+      POSTGRES_PASSWORD: chainofthought
+      POSTGRES_DB: chainofthought
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${COT_DB_PORT:-5433}:5432"
+    networks:
+      - app-network
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "${COT_ZOOKEEPER_PORT:-2181}:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        - POETRY_VIRTUALENVS_CREATE=false
+        - POETRY_CACHE_DIR=/tmp/poetry_cache
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: ${BACKEND_DATABASE_URL:-postgresql://chainofthought:chainofthought@postgres:5432/chainofthought}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    volumes:
+      - ./backend:/app
+      - /app/.venv
+      - /app/__pycache__
+    ports:
+      - "${COT_BACKEND_PORT:-8001}:8001"
+    networks:
+      - app-network
+      - host-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  ui:
+    build: ./frontend
+    ports:
+      - "${COT_FRONTEND_PORT:-3001}:3001"
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://localhost:8001
+    volumes:
+      - ./frontend:/app
+      - ui_node_modules:/app/node_modules
+    networks:
+      - app-network
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  kafka_data: 
+  ui_node_modules:
+
+networks:
+  app-network:
+    driver: bridge
+  host-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16

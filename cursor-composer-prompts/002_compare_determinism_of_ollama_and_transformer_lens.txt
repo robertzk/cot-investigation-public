@@ -1,0 +1,31 @@
+Model: o1
+
+Ollama has a seed and temperature parameter: @https://github.com/ollama/ollama/blob/3919f4ba3d0c40f50b4b89474e3306a900a15eed/docs/modelfile.md?plain=1#L155-L156 
+
+We are using this in @ollama_service.py to pass a specific temperature/seed for generations of some segments. Under the hood, this gets translated to API calls like:
+
+```
+curl http://localhost:11434/api/chat -d '{
+  "model": "gemma2:2b",
+  "options": { "seed": 42, "temperature" 0.7 },
+  "messages": [
+    {
+      "role": "user",
+      "content": "why is the sky blue?"
+    }
+  ]
+}'
+```
+
+I want to be able to deterministically produce the exact same outputs as what gets streamed from the OllamaModelService, but with TransformerLens using the generate method on a  HookedTransformer. Thus, we need to write a script that does the following.
+
+Given a few sample cot_tries @cot_trie.py  on an ollama model, pick a random path to generate a completion. Step into a few nodes of the path. The seed/temperature will be available in the `args` of the CotContent (see @cot_trie.py ). The `steps` of that object will have a list, and for each corresponding index of `args`, we'll see the seed/temperature used to generate that step. Example below
+
+```
+"steps": ["   **Grand Total:** Adding up all the cats, we have 6 + 5 + 2 = 13 cats in total.\n\n\n\n\n**Answer:** There are a total of 13 cats.", "   **Total Cats Combined:** All together, they have 6 + 5 + 2 = 13 cats.\n\n\n\n**Answer:** There are a total of 13 cats.", "   **Grand Total:** All together they have 6 + 5 + 2 = 13 cats.\n\n\n\n**Answer:** There are a total of 13 cats when they all play together."],
+"args": [{"seed": 566138, "temperature": 0.62}, {"seed": 813717, "temperature": 0.64}, {"seed": 393116, "temperature": 0.63}],
+```
+
+We want to be able to produce a few snippets like this that assemble the input prompt *exactly as ollama generates it for the model*, use that input prompt for the TransformerLens generate method and then set the seed/temperature. The goal is to compare whether we get the same segments out in the TransformerLens generation as the ones we observed in ollama.
+
+The tricky part is making sure the chat template/format is exactly the same as is formed by ollama /api/chat endpoint. Check the ollama docs @https://github.com/ollama/ollama/blob/main/docs/api.md#generate-a-completion  or do some browsing of the codebase to determine if we can line this up. You may also need to better understand the TransformerLens seed approach as in  @https://github.com/TransformerLensOrg/TransformerLens/blob/f103debd1084cd79969164ac98ed9059a86354bc/transformer_lens/HookedTransformerConfig.py#L366  and determine whether there is a way to get that to match ollama sampling as in @https://github.com/ollama/ollama/blob/3919f4ba3d0c40f50b4b89474e3306a900a15eed/llama/sampling.cpp 

@@ -1,0 +1,6 @@
+.env
+.env.local
+.venv/
+create/
+backend/scripts/*.json
+.DS_Store
